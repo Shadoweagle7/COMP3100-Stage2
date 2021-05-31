@@ -121,7 +121,7 @@ public class Client {
     }
 
     public static void send(DataOutputStream dout, String toSend) throws IOException {
-        System.out.println("Sending " + toSend);
+        //System.out.println("Sending " + toSend);
         dout.write(toSend.getBytes());
         dout.flush();
     }
@@ -134,7 +134,7 @@ public class Client {
             //throw new IllegalArgumentException("Server gave unexpected response");
         }
 
-        System.out.println("Server: " + new String(data));
+        //System.out.println("Server: " + new String(data));
 
         return new String(data).trim();
     }
@@ -149,7 +149,7 @@ public class Client {
         }
 
         String receivedString = new String(data, 0, expectedSize).trim();
-        System.out.println("Server: " + receivedString);
+        //System.out.println("Server: " + receivedString);
         
         if (!receivedString.equals(expectedString)) {
             printErrorMessage(expectedString, receivedString);
@@ -235,7 +235,7 @@ public class Client {
                         }
                     }
 
-                    System.out.println("coresUsed: " + coresUsed);
+                    //System.out.println("coresUsed: " + coresUsed);
                 } catch (IOException e) {
                     e.printStackTrace();
                     System.exit(0);
