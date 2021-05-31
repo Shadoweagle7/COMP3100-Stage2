@@ -3,8 +3,8 @@ package src;
 public class Tuple {
     // JOBN submitTime jobID estRuntime core memory disk
     
-    public String x;
-    public int y;
+    private String x;
+    private int y;
             
     public Tuple(String x, int y) {
         this.x = x;

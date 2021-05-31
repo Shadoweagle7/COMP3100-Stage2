@@ -99,7 +99,7 @@ public class Client {
                 if (current.getType().equals("JOBN")) {
                     Tuple selected = selectServer(current, servers, din, dout);
 
-                    send(dout, "SCHD " + current.getJobID() + " " + selected.x + " " + selected.y);
+                    send(dout, "SCHD " + current.getJobID() + " " + selected.getX() + " " + selected.getY());
 
                     receive(received, 64, din);
 
@@ -168,45 +168,17 @@ public class Client {
         final int memory = current.getMemoryUsage();
         final int disk = current.getDiskUsage();
 
-        // FF
-
-        ArrayList<Server> compatibleServers = (ArrayList<Server>)servers.stream().filter(
-            (server) -> (
-                server.getNumberOfCores() >= coreCount 
-                //&&
-                //server.getMemoryUsage() >= memory &&
-                //server.getDiskUsage() >= disk
-            )
-        ).collect(Collectors.toList());
-
-        sType = compatibleServers.get(0).getServerType();
-        sID = compatibleServers.get(0).getServerID();
-
         /*
         
          - Minimization of average turnaround time (Hybrid FF / BF)
 
-            Setup: List of servers. A number of threads prepared to run to scan the list
-                   of servers available. Spread out the list of jobs equally between threads
-                   such that they never overlap. Never edit this list (so that a mutex
-                   is not required). The number of threads spawned should increase based
-                   on the size of the list of servers (spawned on the main thread if there
-                   aren't that many on the list).
+            Setup: List of servers.
 
                    Score Value for each server.
 
             1. For each server:
                 a) Check if the server has the resources to run the job (core, memory, disk)
-                    i) Use CNTJ to check how many jobs the server is running. If there are
-                       too many jobs, skip this server. What is defined as "too many" can
-                       be inputted by the user on the command line.
-
-                       CNTJ serverType serverID jobState
-
-                       E.g.
-
-                       CNTJ joon 0 2 would query how many running jobs there are on joon 0
-                    ii) Get the core count, memory and disk usage.
+                    i) Get the core count, memory and disk usage.
                 b) Check for the following:
                     i) If there is enough cores available, it can run the job in parallel.
                        LSTJ -> jobID jobState startTime estRunTime core memory disk
@@ -255,7 +227,53 @@ public class Client {
 
         */
 
-        
+        ArrayList<Server> compatibleServers = (ArrayList<Server>)servers.stream().filter(
+            (server) -> {
+                try {
+                    send(dout, "LSTJ " + server.getServerType() + " " + server.getServerID());
+
+                    byte[] received = new byte[12];
+
+                    String data = receive(received, 12, din); // DATA nRecs recLen
+
+                    String[] dataNRecsRecLen = data.split(" "); // According to current implementation [1] is always going to be 1
+
+                    int recLen = Integer.parseInt(dataNRecsRecLen[2]);
+                    received = new byte[recLen];
+
+                    send(dout, "OK");
+
+                    String stringReceived = receive(received, recLen, din);
+
+                    ArrayList<String[]> allJobs = new ArrayList<String[]>();
+
+                    while (!stringReceived.equals(".")) {
+                        // System.out.println(stringReceived);
+
+                        String[] jobDetails = stringReceived.split(" ");
+
+                        allJobs.add(jobDetails);
+
+                        // Integer.parseInt(jobDetails[4]);
+
+                        send(dout, "OK");
+
+                        stringReceived = receive(received, recLen, din);
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    System.exit(0);
+                }
+
+                return
+                    server.getNumberOfCores() >= coreCount &&
+                    server.getMemoryUsage() >= memory &&
+                    server.getDiskUsage() >= disk;
+            }
+        ).collect(Collectors.toList());
+
+        sType = compatibleServers.get(0).getServerType();
+        sID = compatibleServers.get(0).getServerID();
 
         return new Tuple(sType, sID);
     }
