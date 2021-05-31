@@ -168,67 +168,10 @@ public class Client {
         final int memory = current.getMemoryUsage();
         final int disk = current.getDiskUsage();
 
-        /*
-        
-         - Minimization of average turnaround time (Hybrid FF / BF)
-
-            Setup: List of servers.
-
-                   Score Value for each server.
-
-            1. For each server:
-                a) Check if the server has the resources to run the job (core, memory, disk)
-                    i) Get the core count, memory and disk usage.
-                b) Check for the following:
-                    i) If there is enough cores available, it can run the job in parallel.
-                       LSTJ -> jobID jobState startTime estRunTime core memory disk
-
-                       Use LSTJ to get the list of all jobs and find the minimum core usage at
-                       any given time. By checking the startTime and estRunTime of each job, we
-                       can attempt to find a timespan in which there is enough cores on the server
-                       available to run the job.
-                    ii) If there is enough cores, memory and disk (total installed on the system),
-                        it can run the job.
-
-                    If the server satisfies i), it gains a +1 to its Score Value. If it
-                    satisfies ii), it gains a +2 to its Score Value. Servers with a Score
-                    of 1 can run the job in parallel, but do not have enough memory and
-                    disk to complete the job. Servers with a Score of 2 have enough memory
-                    and disk resources installed total to run the job, but cannot immediately
-                    run the job (since it cannot run it in parallel). Servers that have a
-                    Score of 3 satisfy both conditions and are ideal for execution. The first
-                    server that is identified to have a Score of 3 will be returned immediately,
-                    immediately going to c).
-                c) Join all threads (wait for execution to finish)
-            2. If a server is identified by step 1. b), then return this server. Otherwise, follow
-               the below steps.
-
-               At this point, servers in the eligible list can only have a score of 1 or 2.
-
-               The user can input a maximum time to wait for the job to complete. The next server with
-               a Score of 2 should be returned. If there are no servers with a Score of 2, we
-               need to migrate a job from a server with a Score of 2 or 3.
-
-               MIGJ -> jobID srcServerType srcServerID tgtServerType tgtServerID.
-
-               In the worst case scenario where no server can be optimized for usage,
-               jobs may have to be migrated from servers to make room. First, send a warning to the
-               user mentioning that no servers are available to take the request for the job (
-               "There are currently no servers available to process Job <Job Details>. Waiting
-               for an available server..."). Then MIGJ can be used to migrate some jobs.
-            
-               a) Gather all servers with a Score Value of 2.
-               b) Find the server with the highest Score
-               c) Run LSTJ on that server to get the jobs it is running.
-               d) Migrate a job from a server with a Score of 2 to the server with the highest Score
-                  Ensure that the job migrated has equal or greater resource requirements than the
-                  job to be submitted.
-               e) Schedule our job onto the job which had a job migrated from it.
-
-        */
-
         ArrayList<Server> compatibleServers = (ArrayList<Server>)servers.stream().filter(
             (server) -> {
+                float coresUsed = 0.0f;
+
                 try {
                     send(dout, "LSTJ " + server.getServerType() + " " + server.getServerID());
 
@@ -260,13 +203,46 @@ public class Client {
 
                         stringReceived = receive(received, recLen, din);
                     }
+
+                    for (int i = 0; i < allJobs.size(); i++) {
+                        // 1. Get start and end time
+                        // 2. See if it overlaps with any other start and end time. Iff it does, add it
+                        //    to coreCount.
+
+                        int startTime = Integer.parseInt(allJobs.get(i)[2]);
+                        int estEndTime = Integer.parseInt(allJobs.get(i)[3]);
+                        int cores = Integer.parseInt(allJobs.get(i)[4]);
+
+                        for (int j = 0; j < allJobs.size(); j++) {
+                            if (i != j) {
+                                int startTimeOtherJob = Integer.parseInt(allJobs.get(i)[2]);
+                                int estEndTimeOtherJob = Integer.parseInt(allJobs.get(i)[3]);
+
+                                if (
+                                    (
+                                        startTime < startTimeOtherJob &&
+                                        startTimeOtherJob < estEndTime
+                                    ) ||
+                                    (
+                                        startTimeOtherJob < startTime &&
+                                        estEndTime < estEndTimeOtherJob
+                                    )
+                                ) { // Overlap detected
+                                    coresUsed += (cores) / 2.0f; // This algorithm will cause it to add twice, so divide by half to
+                                                                 // compensate.
+                                }
+                            }
+                        }
+                    }
+
+                    System.out.println("coresUsed: " + coresUsed);
                 } catch (IOException e) {
                     e.printStackTrace();
                     System.exit(0);
                 }
 
                 return
-                    server.getNumberOfCores() >= coreCount &&
+                    server.getNumberOfCores() >= (coreCount - (int)coresUsed) &&
                     server.getMemoryUsage() >= memory &&
                     server.getDiskUsage() >= disk;
             }
